@@ -9,7 +9,7 @@
 
 // Check I2C device address and correct line below (by default address is 0x29 or 0x28)
 //                                   id, address
-Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x28, &Wire);
+Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x29, &Wire);
 
 void setup() //This code is executed once
 {
@@ -53,5 +53,17 @@ void setup() //This code is executed once
 
 void loop() //This code is looped forever
 {
-  //Blank
+
+  // Quaternion data
+  imu::Quaternion quat = bno.getQuat();
+  Serial.print("qW: ");
+  Serial.print(quat.w(), 4);
+  Serial.print(" qX: ");
+  Serial.print(quat.x(), 4);
+  Serial.print(" qY: ");
+  Serial.print(quat.y(), 4);
+  Serial.print(" qZ: ");
+  Serial.print(quat.z(), 4);
+  Serial.println("\t\t");
+
 }
