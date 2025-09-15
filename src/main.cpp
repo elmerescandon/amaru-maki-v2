@@ -70,7 +70,7 @@ void setup() {
 void loop() {
   if (bleWearable.isDeviceConnected()) {
     static unsigned long lastTime = 0;
-    if (millis() - lastTime > 100) {
+    if (millis() - lastTime > 16) { // Send data at ~60Hz
       lastTime = millis();
       // Read Quaternion data from BNO055
       Serial.println("Device connected, sending quaternion data...");
