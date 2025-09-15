@@ -35,6 +35,16 @@ void setup() {
       delay(500);
     }
   }
+    // Select channel 0 for the first BNO055
+  if (!mux.selectChannel(0)) {
+      Serial.println("Failed to select MUX channel 0");
+      while(1){
+        digitalWrite(LED_PIN, LOW); // Turn off the built-in LED to indicate error
+        delay(500);
+        digitalWrite(LED_PIN, HIGH); // Turn on the built-in LED to indicate error
+        delay(500);
+      }
+  }
   Serial.println("2) I2C MUX found!");
   delay(1000);
 
