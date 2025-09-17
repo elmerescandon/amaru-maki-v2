@@ -3,12 +3,24 @@ import numpy as np
 def quaternion_mean(q, q_ref, S, w = 1):
     # Normalize Input Quaternion
     q_normalized = normalize_quaternion(q, q_ref)
-    Q = q_normalized.dot(q_normalized.T)
+
+    if np.dot(q, q_ref) < 0:
+        q_normalized = -q_normalized
+
+    print("Normalized Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_normalized[0], q_normalized[1], q_normalized[2], q_normalized[3]))
+    Q = np.outer(q_normalized, q_normalized)
+    print ("Outer Product Q:\n", Q)
     S_new = S + w*Q
-    eigvals, eigvecs = np.linalg.eig(S_new)
+    print("Updated Covariance Matrix S:\n", S_new)
+
+    eigvals, eigvecs = np.linalg.eigh(S_new)  # eigh() is for symmetric matrices
     max_index = np.argmax(eigvals)
     q_selected = eigvecs[:, max_index]
-    return q_selected/np.linalg.norm(q_selected), S_new
+    print ("Selected Eigenvector (before normalization) (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_selected[0], q_selected[1], q_selected[2], q_selected[3]))
+
+    q_selected =q_selected/np.linalg.norm(q_selected)
+    print ("Updated Mean Quaternion (after normalization) (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_selected[0], q_selected[1], q_selected[2], q_selected[3]))
+    return q_selected, S_new
 
 def normalize_quaternion(q, q_ref):
     return q * (1 if (q_ref.T).dot(q) >= 0 else -1)

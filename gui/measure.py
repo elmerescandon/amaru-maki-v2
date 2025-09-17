@@ -12,6 +12,7 @@ CALIBRATION_TIME = 5  # seconds
 n = 0
 start_time = 0
 end_time = 0
+finished_calibration = False
 # Upper Arm - SU (Sensor Upperarm)
 q_su_arr = []
 q_su = np.array([1, 0, 0, 0])  
@@ -39,6 +40,7 @@ async def main():
         def handle_data(s, data):
             # Get Data
             quat = struct.unpack('<12d', data)
+            global new_qsu
             new_qsu = np.array([quat[0], quat[1], quat[2], quat[3]])
 
             # Initialize Counter
@@ -54,17 +56,19 @@ async def main():
             q_su_arr.append(new_qsu)
             if end_time - start_time < CALIBRATION_TIME:
                 q_su, S_su = quaternion_mean(new_qsu, q_su_arr[0] , S_su, w=1)
-                print("Calibrating... %.2f / %d seconds, don't move" % (end_time - start_time, CALIBRATION_TIME))
-            elif end_time - start_time == CALIBRATION_TIME:
-                print("Calibration complete! You can move now")
+                print("Calibrating... %.2f / %d seconds, don't move. Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (end_time - start_time, CALIBRATION_TIME, q_su[0], q_su[1], q_su[2], q_su[3]))
             else: 
+                global finished_calibration
+                if not finished_calibration:
+                    finished_calibration = True
+                    print("Calibration complete! You can move now")
+                    # print("Initial Upper Arm Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_su[0], q_su[1], q_su[2], q_su[3]))
                 # Begin Calculation
                 q_gu = quat_multiply(new_qsu, q_su)
+                # print("Upper Arm Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_gu[0], q_gu[1], q_gu[2], q_gu[3]))
                 roll, pitch, yaw = quaternion_to_euler_zyx(q_gu)
                 print("Euler Angles (radians): Roll: %.2g, Pitch: %.2g, Yaw: %.2g" % (roll*180/np.pi, pitch*180/np.pi, yaw*180/np.pi))
-            # Finishing Quaternion
             n += 1
-            # print('Q1: %.2g, %.2g, %.2g, %.2g' % (quat_shoulder[0], quat_shoulder[1], quat_shoulder[2], quat_shoulder[3]))
 
         await client.start_notify(CHAR_UUID, handle_data)
         await asyncio.sleep(100)
