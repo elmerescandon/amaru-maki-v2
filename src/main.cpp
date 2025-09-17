@@ -22,6 +22,8 @@ Adafruit_BNO055 bno[2] = {bno_shoulder, bno_elbow }; // bno_wrist};
 
 // Data initialization
 double lastQuat[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static unsigned long lastTime = 0;
+static unsigned long currentTime = 0;
 
 
 // Utility function to handle errors
@@ -76,19 +78,31 @@ void setup() {
 }
 
 void loop() {
-//   if (bleWearable.isDeviceConnected()) {
-//     static unsigned long lastTime = 0;
-//     if (millis() - lastTime > 16) { // Send data at ~60Hz
-//       lastTime = millis();
-//       // Read Quaternion data from BNO055
-//       Serial.println("Device connected, sending quaternion data...");
-//       imu::Quaternion quat = bno.getQuat();
-//       lastQuat[0] = quat.w();
-//       lastQuat[1] = quat.x();
-//       lastQuat[2] = quat.y();
-//       lastQuat[3] = quat.z();
-//       bleWearable.sendData((const uint8_t*)lastQuat, sizeof(lastQuat));
-//       Serial.println("Sent quaternion data");
-//     }
-//   }
+
+  lastTime = millis();
+    for (uint8_t i = 0; i < 2; i++) {
+      uint8_t channel = i; // Assuming channels 0, 1, 2 for three sensors
+      if (channel > 0) {
+          channel = i - 1; // Skip channel 1 if not used
+      }
+      if (!mux.selectChannel(channel)) {
+          Serial.printf("[ERROR] Failed to select MUX channel %d \n", channel);
+          throwError();
+      }
+      imu::Quaternion quat = bno[i].getQuat();
+      lastQuat[i*4 + 0] = quat.w();
+      lastQuat[i*4 + 1] = quat.x();
+      lastQuat[i*4 + 2] = quat.y();
+      lastQuat[i*4 + 3] = quat.z();
+  }
+  currentTime = millis();
+  Serial.printf("Loop Time: %lu ms\n", currentTime - lastTime);
+
+  // Send quaternion data over BLE
+  lastTime = millis();
+  bleWearable.sendData((const uint8_t*)lastQuat, sizeof(lastQuat));
+  currentTime = millis();
+  Serial.printf("BLE Send Time: %lu ms\n", currentTime - lastTime);
+  // Serial.println("Sent quaternion data");
+  delay(BNO055_SAMPLERATE_DELAY_MS);
 }
