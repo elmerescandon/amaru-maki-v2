@@ -57,11 +57,11 @@ void setup() {
         if (channel > 0) {
             channel = i - 1; // Skip channel 1 if not used
         }
+        Serial.printf("[INIT] Selecting MUX channel %d \n", channel);
         if (!mux.selectChannel(channel)) {
             Serial.printf("[ERROR] Failed to select MUX channel %d \n", channel);
             throwError();
         }
-        Serial.printf("[INIT] Selected MUX channel %d \n", i);
         delay(100); // Short delay to ensure channel is set
 
         if (!bno[i].begin()) {
@@ -69,7 +69,6 @@ void setup() {
             throwError();
         }
         bno[i].setExtCrystalUse(true);
-        Serial.printf("[INIT] BNO055 sensor %d initialized. \n", i);
         delay(1000);
     }
     Serial.println("[INIT] IMU Sensors initialized, let's read data! \n");
@@ -78,9 +77,8 @@ void setup() {
 }
 
 void loop() {
-
   lastTime = millis();
-    for (uint8_t i = 0; i < 2; i++) {
+    for (uint8_t i = 0; i < 3; i++) {
       uint8_t channel = i; // Assuming channels 0, 1, 2 for three sensors
       if (channel > 0) {
           channel = i - 1; // Skip channel 1 if not used
@@ -96,13 +94,13 @@ void loop() {
       lastQuat[i*4 + 3] = quat.z();
   }
   currentTime = millis();
-  Serial.printf("Loop Time: %lu ms\n", currentTime - lastTime);
+  // Serial.printf("Loop Time: %lu ms\n", currentTime - lastTime);
 
   // Send quaternion data over BLE
   lastTime = millis();
   bleWearable.sendData((const uint8_t*)lastQuat, sizeof(lastQuat));
   currentTime = millis();
-  Serial.printf("BLE Send Time: %lu ms\n", currentTime - lastTime);
+  // Serial.printf("BLE Send Time: %lu ms\n", currentTime - lastTime);
   // Serial.println("Sent quaternion data");
   delay(BNO055_SAMPLERATE_DELAY_MS);
 }
