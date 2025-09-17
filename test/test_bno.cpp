@@ -11,6 +11,8 @@
 //                                   id, address
 Adafruit_BNO055 bno = Adafruit_BNO055(-1, 0x29, &Wire);
 
+uint8_t SENSORS_ACTIVE = 1;
+
 void setup() //This code is executed once
 {
 	Serial.begin(115200);

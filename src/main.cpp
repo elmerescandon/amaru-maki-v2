@@ -6,7 +6,7 @@
 #include <utility/imumaths.h>
 
 /* Set the delay between fresh samples */
-#define BNO055_SAMPLERATE_DELAY_MS (100)
+#define BNO055_SAMPLERATE_DELAY_MS (16) // ~60Hz
 const int LED_PIN = 2;  // Most ESP32 dev boards use GPIO 2 for the onboard LED
 
 // Only Initializations
@@ -19,6 +19,8 @@ Adafruit_BNO055 bno_shoulder = Adafruit_BNO055(-1, 0x29, &Wire);
 Adafruit_BNO055 bno_elbow = Adafruit_BNO055(-1, 0x28, &Wire);
 Adafruit_BNO055 bno_wrist = Adafruit_BNO055(-1, 0x28, &Wire); 
 Adafruit_BNO055 bno[2] = {bno_shoulder, bno_elbow }; // bno_wrist};
+
+uint8_t SENSORS_ACTIVE = 1;
 
 // Data initialization
 double lastQuat[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -48,10 +50,11 @@ void setup() {
     // Initialize I2C Multiplexer
     Serial.println("[INIT] Starting I2C MUX setup...");
     if (!mux.begin()) {
-    throwError();
+        Serial.println("[ERROR] MUX not found, please check wiring! \n");
+        throwError();
     }
-
-    for (uint8_t i = 0; i < 3; i++) {
+    Serial.printf("[INIT] %d Sensors will be initialized \n", SENSORS_ACTIVE);
+    for (uint8_t i = 0; i < SENSORS_ACTIVE; i++) {
         Serial.printf("[INIT] Setting up BNO055 sensor %d \n", i);
         uint8_t channel = i; // Assuming channels 0, 1, 2 for three sensors
         if (channel > 0) {
@@ -78,7 +81,7 @@ void setup() {
 
 void loop() {
   lastTime = millis();
-    for (uint8_t i = 0; i < 3; i++) {
+    for (uint8_t i = 0; i < SENSORS_ACTIVE; i++) {
       uint8_t channel = i; // Assuming channels 0, 1, 2 for three sensors
       if (channel > 0) {
           channel = i - 1; // Skip channel 1 if not used

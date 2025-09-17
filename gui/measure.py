@@ -38,23 +38,22 @@ async def main():
         
         def handle_data(s, data):
             # Get Data
-            quat = struct.unpack('<4d', data)
+            quat = struct.unpack('<12d', data)
             new_qsu = np.array([quat[0], quat[1], quat[2], quat[3]])
 
             # Initialize Counter
-            global n
+            global n, start_time, end_time
             if n == 0:
-                global start_time
                 start_time = time.time()
                 print ("Starting calibration, don't move")
             else: 
                 end_time = time.time()
 
 
-            global q_su_arr, q_su,q_gu
+            global q_su_arr, q_su,q_gu, S_su
             q_su_arr.append(new_qsu)
             if end_time - start_time < CALIBRATION_TIME:
-                q_su = quaternion_mean(new_qsu, q_su_arr[0] , S_su, w=1)
+                q_su, S_su = quaternion_mean(new_qsu, q_su_arr[0] , S_su, w=1)
                 print("Calibrating... %.2f / %d seconds, don't move" % (end_time - start_time, CALIBRATION_TIME))
             elif end_time - start_time == CALIBRATION_TIME:
                 print("Calibration complete! You can move now")
@@ -62,12 +61,12 @@ async def main():
                 # Begin Calculation
                 q_gu = quat_multiply(new_qsu, q_su)
                 roll, pitch, yaw = quaternion_to_euler_zyx(q_gu)
-                print("Euler Angles (radians): Roll: %.2g, Pitch: %.2g, Yaw: %.2g" % (roll, pitch, yaw))
+                print("Euler Angles (radians): Roll: %.2g, Pitch: %.2g, Yaw: %.2g" % (roll*180/np.pi, pitch*180/np.pi, yaw*180/np.pi))
             # Finishing Quaternion
             n += 1
             # print('Q1: %.2g, %.2g, %.2g, %.2g' % (quat_shoulder[0], quat_shoulder[1], quat_shoulder[2], quat_shoulder[3]))
 
         await client.start_notify(CHAR_UUID, handle_data)
-        # await asyncio.sleep(100)
+        await asyncio.sleep(100)
 
 asyncio.run(main())
