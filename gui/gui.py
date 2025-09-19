@@ -132,30 +132,36 @@ class Arm3DModel(QObject):
         # self.forearm.resetTransform()
         # self.elbow.resetTransform()
         
-        # Fix coordinate system for calibrated quaternions: elevation is inverted again
-        # Since we switched to calibrated quaternions, the inversion behavior changed
+        # Ensure quaternion consistency and fix coordinate system
+        # Normalize and ensure positive w component to avoid sign ambiguity
+        quat = self._normalize_quaternion(upper_arm_quat)
+        if quat[0] < 0:  # If w is negative, flip entire quaternion
+            quat = -quat
+            
+        # Apply coordinate system corrections for anatomical alignment
         corrected_quat = np.array([
-            upper_arm_quat[0],   # w stays the same
-            upper_arm_quat[1],   # x stays the same
-            upper_arm_quat[2],   # y - remove negation for calibrated quaternions
-            upper_arm_quat[3]    # z stays the same
+            quat[0],   # w stays the same
+            quat[1],   # x stays the same  
+            -quat[2],  # y - negate for elevation direction
+            quat[3]    # z stays the same
         ])
         
         # Build rotation matrix from corrected quaternion
         R_upper = self.quaternion_to_rotation_matrix(corrected_quat)
         A = self._axis_align_matrix()
         
-        # FIXED: Separate rotation and translation
+        # CORRECTED: Apply rotation and translation properly
         # The cylinder should rotate around the shoulder joint (origin)
-        # but its center should be positioned at a fixed distance along +X
+        # and its center should be positioned along its own rotated X-axis
         
-        # Step 1: Apply rotation only (around origin/shoulder)
+        # Step 1: Create transform matrix with rotation
         T_upper = np.eye(4, dtype=float)
         T_upper[:3, :3] = R_upper[:3, :3] @ A[:3, :3]
         
-        # Step 2: Translate to position cylinder center at upper_arm_length/2 along +X
-        # This translation is FIXED in world coordinates, not rotated coordinates
-        T_upper[:3, 3] = np.array([self.upper_arm_length * 0.5, 0.0, 0.0])
+        # Step 2: Calculate translation in the rotated coordinate system
+        # The cylinder center should be at upper_arm_length/2 along the rotated X-axis
+        rotated_direction = R_upper[:3, :3] @ np.array([0.0, 0.0, 0.0])
+        T_upper[:3, 3] = rotated_direction * (self.upper_arm_length * 0.5)
         
         self.upper_arm.setTransform(T_upper)
         
