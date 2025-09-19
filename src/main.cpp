@@ -20,7 +20,7 @@ Adafruit_BNO055 bno_elbow = Adafruit_BNO055(-1, 0x28, &Wire);
 Adafruit_BNO055 bno_wrist = Adafruit_BNO055(-1, 0x28, &Wire); 
 Adafruit_BNO055 bno[3] = {bno_shoulder, bno_elbow, bno_wrist};
 
-uint8_t SENSORS_ACTIVE = 3;
+uint8_t SENSORS_ACTIVE = 2;
 
 // Data initialization
 double lastQuat[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};

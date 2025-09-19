@@ -195,7 +195,7 @@ class JointAngleCalculator:
     def __init__(self):
         pass
     
-    def wrist_angles(self, palm_quat, forearm_quat):
+    def wrist_angles(self, palm_quat, forearm_quat, verbose=False):
         """
         Convert to wrist flexion/extension, radial/ulnar deviation, pronation/supination.
         
@@ -206,26 +206,32 @@ class JointAngleCalculator:
         
         Returns angles in degrees.
         """
-        # DEBUG: Log input quaternions
-        print(f"\n--- WRIST DEBUG ---")
-        print(f"Forearm Quat:    w={forearm_quat[0]:6.3f} x={forearm_quat[1]:6.3f} y={forearm_quat[2]:6.3f} z={forearm_quat[3]:6.3f}")
-        print(f"Palm Quat:       w={palm_quat[0]:6.3f} x={palm_quat[1]:6.3f} y={palm_quat[2]:6.3f} z={palm_quat[3]:6.3f}")
+        if verbose:
+            # DEBUG: Log input quaternions
+            print(f"\n--- WRIST DEBUG ---")
+            print(f"Forearm Quat:    w={forearm_quat[0]:6.3f} x={forearm_quat[1]:6.3f} y={forearm_quat[2]:6.3f} z={forearm_quat[3]:6.3f}")
+            print(f"Palm Quat:       w={palm_quat[0]:6.3f} x={palm_quat[1]:6.3f} y={palm_quat[2]:6.3f} z={palm_quat[3]:6.3f}")
         
         # Calculate palm rotation relative to forearm
         wrist_quat = calculate_joint_rotation(palm_quat, forearm_quat)
-        print(f"Relative Quat:   w={wrist_quat[0]:6.3f} x={wrist_quat[1]:6.3f} y={wrist_quat[2]:6.3f} z={wrist_quat[3]:6.3f}")
+        
+        if verbose:
+            print(f"Relative Quat:   w={wrist_quat[0]:6.3f} x={wrist_quat[1]:6.3f} y={wrist_quat[2]:6.3f} z={wrist_quat[3]:6.3f}")
         
         # Convert to Euler angles (ZYX convention: roll=X, pitch=Y, yaw=Z)
         roll, pitch, yaw = quaternion_to_euler_zyx(wrist_quat)
         
-        # DEBUG: Log all Euler angles
+        # Convert to degrees
         roll_deg = roll * 180 / np.pi
         pitch_deg = pitch * 180 / np.pi  
         yaw_deg = yaw * 180 / np.pi
-        print(f"Euler Angles:")
-        print(f"  Roll  (X-axis): {roll_deg:7.2f}° <- Pronation/Supination")
-        print(f"  Pitch (Y-axis): {pitch_deg:7.2f}° <- Flexion/Extension")
-        print(f"  Yaw   (Z-axis): {yaw_deg:7.2f}° <- Radial/Ulnar Deviation")
+        
+        if verbose:
+            # DEBUG: Log all Euler angles
+            print(f"Euler Angles:")
+            print(f"  Roll  (X-axis): {roll_deg:7.2f}° <- Pronation/Supination")
+            print(f"  Pitch (Y-axis): {pitch_deg:7.2f}° <- Flexion/Extension")
+            print(f"  Yaw   (Z-axis): {yaw_deg:7.2f}° <- Radial/Ulnar Deviation")
         
         # Map to anatomical terms based on coordinate frame:
         # - Flexion/Extension: rotation around Y axis (lateral axis)
@@ -235,11 +241,12 @@ class JointAngleCalculator:
         radial_ulnar_deviation = yaw_deg     # Z-axis: Radial(+) / Ulnar(-)  
         pronation_supination = roll_deg      # X-axis: Pronation(+) / Supination(-)
         
-        print(f"Final Wrist Angles:")
-        print(f"  Flexion/Extension:      {flexion_extension:7.2f}°")
-        print(f"  Radial/Ulnar Deviation: {radial_ulnar_deviation:7.2f}°")
-        print(f"  Pronation/Supination:   {pronation_supination:7.2f}°")
-        print(f"--- END WRIST DEBUG ---\n")
+        if verbose:
+            print(f"Final Wrist Angles:")
+            print(f"  Flexion/Extension:      {flexion_extension:7.2f}°")
+            print(f"  Radial/Ulnar Deviation: {radial_ulnar_deviation:7.2f}°")
+            print(f"  Pronation/Supination:   {pronation_supination:7.2f}°")
+            print(f"--- END WRIST DEBUG ---\n")
         
         return {
             'flexion_extension': flexion_extension,
@@ -247,7 +254,7 @@ class JointAngleCalculator:
             'pronation_supination': pronation_supination
         }
     
-    def elbow_angles(self, forearm_quat, upperarm_quat):
+    def elbow_angles(self, forearm_quat, upperarm_quat, verbose=False):
         """
         Convert to elbow flexion/extension.
         
@@ -258,26 +265,32 @@ class JointAngleCalculator:
         
         Returns angles in degrees.
         """
-        # DEBUG: Log input quaternions
-        print(f"\n--- ELBOW DEBUG ---")
-        print(f"Upper Arm Quat:  w={upperarm_quat[0]:6.3f} x={upperarm_quat[1]:6.3f} y={upperarm_quat[2]:6.3f} z={upperarm_quat[3]:6.3f}")
-        print(f"Forearm Quat:    w={forearm_quat[0]:6.3f} x={forearm_quat[1]:6.3f} y={forearm_quat[2]:6.3f} z={forearm_quat[3]:6.3f}")
+        if verbose:
+            # DEBUG: Log input quaternions
+            print(f"\n--- ELBOW DEBUG ---")
+            print(f"Upper Arm Quat:  w={upperarm_quat[0]:6.3f} x={upperarm_quat[1]:6.3f} y={upperarm_quat[2]:6.3f} z={upperarm_quat[3]:6.3f}")
+            print(f"Forearm Quat:    w={forearm_quat[0]:6.3f} x={forearm_quat[1]:6.3f} y={forearm_quat[2]:6.3f} z={forearm_quat[3]:6.3f}")
         
         # Calculate forearm rotation relative to upper arm
         elbow_quat = calculate_joint_rotation(forearm_quat, upperarm_quat)
-        print(f"Relative Quat:   w={elbow_quat[0]:6.3f} x={elbow_quat[1]:6.3f} y={elbow_quat[2]:6.3f} z={elbow_quat[3]:6.3f}")
+        
+        if verbose:
+            print(f"Relative Quat:   w={elbow_quat[0]:6.3f} x={elbow_quat[1]:6.3f} y={elbow_quat[2]:6.3f} z={elbow_quat[3]:6.3f}")
         
         # Convert to Euler angles (ZYX convention: roll=X, pitch=Y, yaw=Z)
         roll, pitch, yaw = quaternion_to_euler_zyx(elbow_quat)
         
-        # DEBUG: Log all Euler angles
+        # Convert to degrees
         roll_deg = roll * 180 / np.pi
         pitch_deg = pitch * 180 / np.pi  
         yaw_deg = yaw * 180 / np.pi
-        print(f"Euler Angles:")
-        print(f"  Roll  (X-axis): {roll_deg:7.2f}°")
-        print(f"  Pitch (Y-axis): {pitch_deg:7.2f}° <- Currently using as flexion")
-        print(f"  Yaw   (Z-axis): {yaw_deg:7.2f}°")
+        
+        if verbose:
+            # DEBUG: Log all Euler angles
+            print(f"Euler Angles:")
+            print(f"  Roll  (X-axis): {roll_deg:7.2f}°")
+            print(f"  Pitch (Y-axis): {pitch_deg:7.2f}° <- Currently using as flexion")
+            print(f"  Yaw   (Z-axis): {yaw_deg:7.2f}°")
         
         # Map to anatomical terms based on coordinate frame:
         # Based on debug data, elbow flexion appears to be Z-axis rotation (yaw)
@@ -285,12 +298,61 @@ class JointAngleCalculator:
         #   When forearm moves toward bicep = positive flexion
         flexion_extension = yaw_deg  # Z-axis: Flexion(+) / Extension(-)
         
-        print(f"TESTING: Pitch={pitch_deg:7.2f}° vs Yaw={yaw_deg:7.2f}° (Using Yaw as flexion)")
-        print(f"Final Flexion/Extension: {flexion_extension:7.2f}°")
-        print(f"--- END ELBOW DEBUG ---\n")
+        if verbose:
+            print(f"TESTING: Pitch={pitch_deg:7.2f}° vs Yaw={yaw_deg:7.2f}° (Using Yaw as flexion)")
+            print(f"Final Flexion/Extension: {flexion_extension:7.2f}°")
+            print(f"--- END ELBOW DEBUG ---\n")
         
         return {
             'flexion_extension': flexion_extension
+        }
+    
+    def upper_arm_angles(self, upperarm_quat, verbose=False):
+        """
+        Convert upper arm quaternion to global orientation angles.
+        This represents upper arm movement relative to the calibrated reference.
+        
+        Coordinate Frame Convention:
+        - X axis: points toward fingers (distal direction)
+        - Z axis: points toward ceiling
+        - Y axis: follows right-hand rule (points laterally)
+        
+        Returns angles in degrees.
+        """
+        if verbose:
+            print(f"\n--- UPPER ARM DEBUG ---")
+            print(f"Upper Arm Quat:  w={upperarm_quat[0]:6.3f} x={upperarm_quat[1]:6.3f} y={upperarm_quat[2]:6.3f} z={upperarm_quat[3]:6.3f}")
+        
+        # Convert to Euler angles (ZYX convention: roll=X, pitch=Y, yaw=Z)
+        roll, pitch, yaw = quaternion_to_euler_zyx(upperarm_quat)
+        
+        # Convert to degrees
+        roll_deg = roll * 180 / np.pi
+        pitch_deg = pitch * 180 / np.pi  
+        yaw_deg = yaw * 180 / np.pi
+        
+        if verbose:
+            print(f"Euler Angles:")
+            print(f"  Roll  (X-axis): {roll_deg:7.2f}° <- Shoulder rotation")
+            print(f"  Pitch (Y-axis): {pitch_deg:7.2f}° <- Shoulder elevation")
+            print(f"  Yaw   (Z-axis): {yaw_deg:7.2f}° <- Shoulder abduction")
+        
+        # Map to anatomical terms based on coordinate frame:
+        shoulder_rotation = roll_deg     # X-axis: Internal(+) / External(-) rotation
+        shoulder_elevation = pitch_deg   # Y-axis: Elevation(+) / Depression(-)
+        shoulder_abduction = yaw_deg     # Z-axis: Abduction(+) / Adduction(-)
+        
+        if verbose:
+            print(f"Final Upper Arm Angles:")
+            print(f"  Shoulder Rotation:   {shoulder_rotation:7.2f}°")
+            print(f"  Shoulder Elevation:  {shoulder_elevation:7.2f}°")
+            print(f"  Shoulder Abduction:  {shoulder_abduction:7.2f}°")
+            print(f"--- END UPPER ARM DEBUG ---\n")
+        
+        return {
+            'shoulder_rotation': shoulder_rotation,
+            'shoulder_elevation': shoulder_elevation,
+            'shoulder_abduction': shoulder_abduction
         }
 
 
@@ -299,10 +361,24 @@ class JointAngleCalculator:
 class ArmMotionTracker:
     """Main class for processing multi-IMU arm motion data"""
     
-    def __init__(self, calibration_time=5):
+    def __init__(self, calibration_time=5, verbose=False):
         self.calibrator = MultiIMUCalibrator(calibration_time)
         self.angle_calculator = JointAngleCalculator()
         self.last_joint_measurements = None
+        self.verbose = verbose
+        self.active_body_parts = {'upper_arm': True, 'elbow': True, 'wrist': True}
+    
+    def set_verbose(self, verbose):
+        """Enable or disable verbose debug output"""
+        self.verbose = verbose
+    
+    def set_active_body_parts(self, upper_arm=True, elbow=True, wrist=True):
+        """Configure which body parts to track and display"""
+        self.active_body_parts = {
+            'upper_arm': upper_arm,
+            'elbow': elbow, 
+            'wrist': wrist
+        }
     
     def process_frame(self, raw_data):
         """
@@ -312,12 +388,13 @@ class ArmMotionTracker:
         # Parse the raw 12-double data
         try:
             imu_data = parse_imu_data(raw_data)
-            # DEBUG: Log raw parsed data
-            print(f"\n=== RAW IMU DATA ===")
-            print(f"Upper Arm RAW:  w={imu_data['upper_arm'][0]:6.3f} x={imu_data['upper_arm'][1]:6.3f} y={imu_data['upper_arm'][2]:6.3f} z={imu_data['upper_arm'][3]:6.3f}")
-            print(f"Forearm RAW:    w={imu_data['forearm'][0]:6.3f} x={imu_data['forearm'][1]:6.3f} y={imu_data['forearm'][2]:6.3f} z={imu_data['forearm'][3]:6.3f}")
-            print(f"Palm RAW:       w={imu_data['palm'][0]:6.3f} x={imu_data['palm'][1]:6.3f} y={imu_data['palm'][2]:6.3f} z={imu_data['palm'][3]:6.3f}")
-            print(f"==================\n")
+            if self.verbose:
+                # DEBUG: Log raw parsed data
+                print(f"\n=== RAW IMU DATA ===")
+                print(f"Upper Arm RAW:  w={imu_data['upper_arm'][0]:6.3f} x={imu_data['upper_arm'][1]:6.3f} y={imu_data['upper_arm'][2]:6.3f} z={imu_data['upper_arm'][3]:6.3f}")
+                print(f"Forearm RAW:    w={imu_data['forearm'][0]:6.3f} x={imu_data['forearm'][1]:6.3f} y={imu_data['forearm'][2]:6.3f} z={imu_data['forearm'][3]:6.3f}")
+                print(f"Palm RAW:       w={imu_data['palm'][0]:6.3f} x={imu_data['palm'][1]:6.3f} y={imu_data['palm'][2]:6.3f} z={imu_data['palm'][3]:6.3f}")
+                print(f"==================\n")
         except ValueError as e:
             print(f"Error parsing IMU data: {e}")
             return None
@@ -332,29 +409,44 @@ class ArmMotionTracker:
         if calibrated_data is None:
             return None
             
-        # DEBUG: Log calibrated data
-        print(f"=== CALIBRATED DATA ===")
-        print(f"Upper Arm CAL:  w={calibrated_data['upper_arm'][0]:6.3f} x={calibrated_data['upper_arm'][1]:6.3f} y={calibrated_data['upper_arm'][2]:6.3f} z={calibrated_data['upper_arm'][3]:6.3f}")
-        print(f"Forearm CAL:    w={calibrated_data['forearm'][0]:6.3f} x={calibrated_data['forearm'][1]:6.3f} y={calibrated_data['forearm'][2]:6.3f} z={calibrated_data['forearm'][3]:6.3f}")
-        print(f"Palm CAL:       w={calibrated_data['palm'][0]:6.3f} x={calibrated_data['palm'][1]:6.3f} y={calibrated_data['palm'][2]:6.3f} z={calibrated_data['palm'][3]:6.3f}")
-        print(f"=====================\n")
+        if self.verbose:
+            # DEBUG: Log calibrated data
+            print(f"=== CALIBRATED DATA ===")
+            print(f"Upper Arm CAL:  w={calibrated_data['upper_arm'][0]:6.3f} x={calibrated_data['upper_arm'][1]:6.3f} y={calibrated_data['upper_arm'][2]:6.3f} z={calibrated_data['upper_arm'][3]:6.3f}")
+            print(f"Forearm CAL:    w={calibrated_data['forearm'][0]:6.3f} x={calibrated_data['forearm'][1]:6.3f} y={calibrated_data['forearm'][2]:6.3f} z={calibrated_data['forearm'][3]:6.3f}")
+            print(f"Palm CAL:       w={calibrated_data['palm'][0]:6.3f} x={calibrated_data['palm'][1]:6.3f} y={calibrated_data['palm'][2]:6.3f} z={calibrated_data['palm'][3]:6.3f}")
+            print(f"=====================\n")
         
-        # Calculate joint angles
+        # Calculate joint angles based on active body parts
         try:
-            wrist_angles = self.angle_calculator.wrist_angles(
-                calibrated_data['palm'], 
-                calibrated_data['forearm']
-            )
+            results = {}
             
-            elbow_angles = self.angle_calculator.elbow_angles(
-                calibrated_data['forearm'], 
-                calibrated_data['upper_arm']
-            )
+            if self.active_body_parts['upper_arm']:
+                upper_arm_angles = self.angle_calculator.upper_arm_angles(
+                    calibrated_data['upper_arm'], 
+                    verbose=self.verbose
+                )
+                results['upper_arm'] = upper_arm_angles
+                
+            if self.active_body_parts['elbow']:
+                elbow_angles = self.angle_calculator.elbow_angles(
+                    calibrated_data['forearm'], 
+                    calibrated_data['upper_arm'],
+                    verbose=self.verbose
+                )
+                results['elbow'] = elbow_angles
+                
+            if self.active_body_parts['wrist']:
+                wrist_angles = self.angle_calculator.wrist_angles(
+                    calibrated_data['palm'], 
+                    calibrated_data['forearm'],
+                    verbose=self.verbose
+                )
+                results['wrist'] = wrist_angles
             
-            # Structure the results
+            # Structure the complete results
             joint_measurements = {
-                'wrist': wrist_angles,
-                'elbow': elbow_angles,
+                **results,  # Include computed angles (upper_arm, elbow, wrist as available)
                 'calibration_status': 'complete',
                 'data_quality': 'good',
                 'raw_quaternions': {
@@ -364,6 +456,10 @@ class ArmMotionTracker:
                 },
                 'calibrated_quaternions': calibrated_data
             }
+            
+            # Clean output when not verbose
+            if not self.verbose:
+                self._display_clean_output(results)
             
             self.last_joint_measurements = joint_measurements
             return joint_measurements
@@ -384,4 +480,33 @@ class ArmMotionTracker:
         elapsed = time.time() - self.calibrator.start_time
         progress = min(elapsed / self.calibrator.calibration_time * 100, 100.0)
         return progress
+    
+    def _display_clean_output(self, results):
+        """Display clean, non-verbose output for joint angles"""
+        print("\n" + "="*50)
+        print("ARM MOTION MEASUREMENTS")
+        print("="*50)
+        
+        if 'upper_arm' in results:
+            upper_arm = results['upper_arm']
+            print("UPPER ARM (Shoulder):")
+            print(f"  Rotation:   {upper_arm['shoulder_rotation']:6.1f}° {'(Internal)' if upper_arm['shoulder_rotation'] > 0 else '(External)'}")
+            print(f"  Elevation:  {upper_arm['shoulder_elevation']:6.1f}° {'(Up)' if upper_arm['shoulder_elevation'] > 0 else '(Down)'}")
+            print(f"  Abduction:  {upper_arm['shoulder_abduction']:6.1f}° {'(Out)' if upper_arm['shoulder_abduction'] > 0 else '(In)'}")
+            print()
+            
+        if 'elbow' in results:
+            elbow = results['elbow']
+            print("ELBOW:")
+            print(f"  Flexion/Extension: {elbow['flexion_extension']:6.1f}° {'(Flex)' if elbow['flexion_extension'] > 0 else '(Ext)'}")
+            print()
+            
+        if 'wrist' in results:
+            wrist = results['wrist']
+            print("WRIST:")
+            print(f"  Flexion/Extension:     {wrist['flexion_extension']:6.1f}° {'(Flex)' if wrist['flexion_extension'] > 0 else '(Ext)'}")
+            print(f"  Radial/Ulnar Deviation: {wrist['radial_ulnar_deviation']:6.1f}° {'(Radial)' if wrist['radial_ulnar_deviation'] > 0 else '(Ulnar)'}")
+            print(f"  Pronation/Supination:   {wrist['pronation_supination']:6.1f}° {'(Pronate)' if wrist['pronation_supination'] > 0 else '(Supinate)'}")
+            
+        print("="*50 + "\n")
 
