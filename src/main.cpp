@@ -18,9 +18,9 @@ I2CMux mux(0x70);
 Adafruit_BNO055 bno_shoulder = Adafruit_BNO055(-1, 0x29, &Wire);
 Adafruit_BNO055 bno_elbow = Adafruit_BNO055(-1, 0x28, &Wire);
 Adafruit_BNO055 bno_wrist = Adafruit_BNO055(-1, 0x28, &Wire); 
-Adafruit_BNO055 bno[2] = {bno_shoulder, bno_elbow }; // bno_wrist};
+Adafruit_BNO055 bno[3] = {bno_shoulder, bno_elbow, bno_wrist};
 
-uint8_t SENSORS_ACTIVE = 1;
+uint8_t SENSORS_ACTIVE = 3;
 
 // Data initialization
 double lastQuat[12] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -71,6 +71,7 @@ void setup() {
             Serial.printf("[INIT] BNO055 sensor %d not found, please restart the device! \n", i);
             throwError();
         }
+        Serial.printf("[INIT] BNO055 sensor %d found! \n", i);
         bno[i].setExtCrystalUse(true);
         delay(1000);
     }

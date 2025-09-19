@@ -2,22 +2,15 @@ import numpy as np
 import asyncio
 from bleak import BleakScanner, BleakClient
 import struct
-from utils import * 
+from utils import ArmMotionTracker
 import time
 
-# Quaternion Format (w,x,y,z)
-
+# Multi-IMU Motion Tracking Configuration
 CHAR_UUID = "abcd1234-5678-90ab-cdef-1234567890ab"  # characteristic UUID
 CALIBRATION_TIME = 5  # seconds
-n = 0
-start_time = 0
-end_time = 0
-finished_calibration = False
-# Upper Arm - SU (Sensor Upperarm)
-q_su_arr = []
-q_su = np.array([1, 0, 0, 0])  
-q_gu = np.array([1, 0, 0, 0])
-S_su = np.zeros((4,4)) 
+
+# Initialize the multi-IMU motion tracker
+motion_tracker = ArmMotionTracker(calibration_time=CALIBRATION_TIME) 
 
 async def main():
     print("Scanning...")
@@ -37,38 +30,43 @@ async def main():
     async with BleakClient(esp32) as client:
         print("Connected!")
         
-        def handle_data(s, data):
-            # Get Data
-            quat = struct.unpack('<12d', data)
-            global new_qsu
-            new_qsu = np.array([quat[0], quat[1], quat[2], quat[3]])
-
-            # Initialize Counter
-            global n, start_time, end_time
-            if n == 0:
-                start_time = time.time()
-                print ("Starting calibration, don't move")
-            else: 
-                end_time = time.time()
-
-
-            global q_su_arr, q_su,q_gu, S_su
-            q_su_arr.append(new_qsu)
-            if end_time - start_time < CALIBRATION_TIME:
-                q_su, S_su = quaternion_mean(new_qsu, q_su_arr[0] , S_su, w=1)
-                print("Calibrating... %.2f / %d seconds, don't move. Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (end_time - start_time, CALIBRATION_TIME, q_su[0], q_su[1], q_su[2], q_su[3]))
-            else: 
-                global finished_calibration
-                if not finished_calibration:
-                    finished_calibration = True
-                    print("Calibration complete! You can move now")
-                    # print("Initial Upper Arm Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_su[0], q_su[1], q_su[2], q_su[3]))
-                # Begin Calculation
-                q_gu = quat_multiply(new_qsu, q_su)
-                # print("Upper Arm Quaternion (w,x,y,z): %.2g, %.2g, %.2g, %.2g" % (q_gu[0], q_gu[1], q_gu[2], q_gu[3]))
-                roll, pitch, yaw = quaternion_to_euler_zyx(q_gu)
-                print("Euler Angles (radians): Roll: %.2g, Pitch: %.2g, Yaw: %.2g" % (roll*180/np.pi, pitch*180/np.pi, yaw*180/np.pi))
-            n += 1
+        def handle_data(sender, data):
+            """Enhanced data handler for multi-IMU joint tracking"""
+            # Extract raw quaternion data (12 doubles)
+            raw_quat_data = struct.unpack('<12d', data)
+            
+            # Process through the motion tracker
+            joint_measurements = motion_tracker.process_frame(raw_quat_data)
+            
+            # During calibration, motion_tracker.process_frame returns None
+            if joint_measurements is None:
+                return
+                
+            # Display comprehensive joint angle measurements
+            print("\n" + "="*60)
+            print("JOINT ANGLE MEASUREMENTS")
+            print("="*60)
+            
+            # Wrist angles
+            wrist = joint_measurements['wrist']
+            print(f"WRIST:")
+            print(f"  Flexion/Extension:     {wrist['flexion_extension']:6.1f}° {'(Flex)' if wrist['flexion_extension'] > 0 else '(Ext)'}")
+            print(f"  Radial/Ulnar Deviation: {wrist['radial_ulnar_deviation']:6.1f}° {'(Radial)' if wrist['radial_ulnar_deviation'] > 0 else '(Ulnar)'}")
+            print(f"  Pronation/Supination:   {wrist['pronation_supination']:6.1f}° {'(Pronate)' if wrist['pronation_supination'] > 0 else '(Supinate)'}")
+            
+            # Elbow angles  
+            elbow = joint_measurements['elbow']
+            print(f"\nELBOW:")
+            print(f"  Flexion/Extension:     {elbow['flexion_extension']:6.1f}° {'(Flex)' if elbow['flexion_extension'] > 0 else '(Ext)'}")
+            
+            # Optional: Display raw quaternions for debugging
+            # raw_quats = joint_measurements['raw_quaternions']
+            # print(f"\nRAW QUATERNIONS:")
+            # print(f"  Upper Arm: w:{raw_quats['upper_arm'][0]:5.2f} x:{raw_quats['upper_arm'][1]:5.2f} y:{raw_quats['upper_arm'][2]:5.2f} z:{raw_quats['upper_arm'][3]:5.2f}")
+            # print(f"  Forearm:   w:{raw_quats['forearm'][0]:5.2f} x:{raw_quats['forearm'][1]:5.2f} y:{raw_quats['forearm'][2]:5.2f} z:{raw_quats['forearm'][3]:5.2f}")
+            # print(f"  Palm:      w:{raw_quats['palm'][0]:5.2f} x:{raw_quats['palm'][1]:5.2f} y:{raw_quats['palm'][2]:5.2f} z:{raw_quats['palm'][3]:5.2f}")
+            
+            print("="*60)
 
         await client.start_notify(CHAR_UUID, handle_data)
         await asyncio.sleep(100)
