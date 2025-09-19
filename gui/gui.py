@@ -61,29 +61,20 @@ class Arm3DModel(QObject):
                                               radius=[self.bone_radius * 1.1, self.bone_radius * 0.9], 
                                               length=self.upper_arm_length)
         self.upper_arm = gl.GLMeshItem(meshdata=upper_arm_mesh, color=(1.0, 0.5, 0.5, 1.0))  # Red
-        
-        # Rotate cylinder to align with X-axis (forward direction) and position
-        self.upper_arm.rotate(90, 0, 1, 0)  # Rotate 90° around Y-axis to point along +X
-        self.upper_arm.translate(self.upper_arm_length/2, 0, 0)  # Position center at half-length along X
         self.view.addItem(self.upper_arm)
         
-        # Create elbow joint (sphere at end of upper arm)
-        elbow_sphere = gl.MeshData.sphere(rows=12, cols=24, radius=self.joint_radius)
-        self.elbow = gl.GLMeshItem(meshdata=elbow_sphere, color=(0.4, 0.4, 1.0, 1.0))  # Blue
-        self.elbow.translate(self.upper_arm_length, 0, 0)  # At end of upper arm along X-axis
-        self.view.addItem(self.elbow)
+        # Create elbow joint (sphere at end of upper arm) - COMMENTED OUT FOR DEBUGGING
+        # elbow_sphere = gl.MeshData.sphere(rows=12, cols=24, radius=self.joint_radius)
+        # self.elbow = gl.GLMeshItem(meshdata=elbow_sphere, color=(0.4, 0.4, 1.0, 1.0))  # Blue
+        # self.view.addItem(self.elbow)
         
-        # Create forearm (cylinder extending forward from elbow along X-axis)
-        # Slight taper from elbow to wrist
-        forearm_mesh = gl.MeshData.cylinder(rows=20, cols=24, 
-                                           radius=[self.bone_radius * 0.9, self.bone_radius * 0.7], 
-                                           length=self.forearm_length)
-        self.forearm = gl.GLMeshItem(meshdata=forearm_mesh, color=(0.4, 1.0, 0.4, 1.0))  # Green
-        
-        # Rotate and position forearm to continue along X-axis
-        self.forearm.rotate(90, 0, 1, 0)  # Rotate 90° around Y-axis to point along +X
-        self.forearm.translate(self.upper_arm_length + self.forearm_length/2, 0, 0)
-        self.view.addItem(self.forearm)
+        # Create forearm (cylinder extending forward from elbow along X-axis) - COMMENTED OUT FOR DEBUGGING
+        # # Slight taper from elbow to wrist
+        # forearm_mesh = gl.MeshData.cylinder(rows=20, cols=24, 
+        #                                    radius=[self.bone_radius * 0.9, self.bone_radius * 0.7], 
+        #                                    length=self.forearm_length)
+        # self.forearm = gl.GLMeshItem(meshdata=forearm_mesh, color=(0.4, 1.0, 0.4, 1.0))  # Green
+        # self.view.addItem(self.forearm)
         
         # Create coordinate axes for reference
         self.add_coordinate_axes()
@@ -108,75 +99,74 @@ class Arm3DModel(QObject):
         z_line = gl.GLLinePlotItem(pos=z_axis, color=(0, 0, 1, 1), width=5)
         self.view.addItem(z_line)
     
+    def _normalize_quaternion(self, q):
+        q = np.asarray(q, dtype=float)
+        norm = np.linalg.norm(q)
+        return q / norm if norm > 0 else np.array([1.0, 0.0, 0.0, 0.0])
+    
     def quaternion_to_rotation_matrix(self, q):
-        """Convert quaternion [w, x, y, z] to 4x4 rotation matrix"""
-        w, x, y, z = q
-        
-        # Rotation matrix from quaternion
+        """Convert quaternion [w, x, y, z] to 4x4 rotation matrix (normalized)."""
+        w, x, y, z = self._normalize_quaternion(q)
         rotation_matrix = np.array([
-            [1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y), 0],
-            [2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x), 0],
-            [2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y), 0],
-            [0, 0, 0, 1]
-        ])
-        
+            [1 - 2*(y*y + z*z), 2*(x*y - w*z),     2*(x*z + w*y),     0],
+            [2*(x*y + w*z),     1 - 2*(x*x + z*z), 2*(y*z - w*x),     0],
+            [2*(x*z - w*y),     2*(y*z + w*x),     1 - 2*(x*x + y*y), 0],
+            [0,                 0,                 0,                 1]
+        ], dtype=float)
         return rotation_matrix
     
-    def update_arm_pose(self, upper_arm_quat, forearm_quat):
-        """Update arm pose from IMU quaternions"""
-        # Reset transformations
-        self.upper_arm.resetTransform()
-        self.forearm.resetTransform()
-        self.elbow.resetTransform()
-        
-        # Base rotation matrix to align cylinder (Z-axis) with our X-axis (forward)
-        base_rotation = np.array([
-            [0, 0, 1, 0],   # Map Z to X (forward along arm)
-            [0, 1, 0, 0],   # Y stays Y (lateral)  
-            [-1, 0, 0, 0],  # Map X to -Z (was up, now back)
+    def _axis_align_matrix(self):
+        """Constant matrix that maps cylinder local Z-axis to the model's X-axis."""
+        # Equivalent to +90° rotation about Y-axis
+        return np.array([
+            [0, 0, 1, 0],
+            [0, 1, 0, 0],
+            [-1, 0, 0, 0],
             [0, 0, 0, 1]
+        ], dtype=float)
+    
+    def update_arm_pose(self, upper_arm_quat, forearm_quat):
+        """Update arm pose from IMU quaternions (X forward, Z up, Y right-hand)."""
+        # Reset transforms - ONLY UPPER ARM FOR DEBUGGING
+        self.upper_arm.resetTransform()
+        # self.forearm.resetTransform()
+        # self.elbow.resetTransform()
+        
+        # Fix coordinate system for calibrated quaternions: elevation is inverted again
+        # Since we switched to calibrated quaternions, the inversion behavior changed
+        corrected_quat = np.array([
+            upper_arm_quat[0],   # w stays the same
+            upper_arm_quat[1],   # x stays the same
+            upper_arm_quat[2],   # y - remove negation for calibrated quaternions
+            upper_arm_quat[3]    # z stays the same
         ])
         
-        # === UPPER ARM ===
-        # Apply upper arm rotation (shoulder movement)
-        upper_arm_matrix = self.quaternion_to_rotation_matrix(upper_arm_quat)
-        combined_upper_arm = np.dot(upper_arm_matrix, base_rotation)
+        # Build rotation matrix from corrected quaternion
+        R_upper = self.quaternion_to_rotation_matrix(corrected_quat)
+        A = self._axis_align_matrix()
         
-        self.upper_arm.setTransform(combined_upper_arm)
-        self.upper_arm.translate(self.upper_arm_length/2, 0, 0)
+        # FIXED: Separate rotation and translation
+        # The cylinder should rotate around the shoulder joint (origin)
+        # but its center should be positioned at a fixed distance along +X
         
-        # Calculate elbow position: at the end of the upper arm
-        # The upper arm extends from center-half_length to center+half_length
-        # So the elbow is at center + half_length in the upper arm's local coordinate system
-        elbow_local_offset = np.array([self.upper_arm_length/2, 0, 0, 1])  # From center to end
-        elbow_offset_world = np.dot(combined_upper_arm, elbow_local_offset)
+        # Step 1: Apply rotation only (around origin/shoulder)
+        T_upper = np.eye(4, dtype=float)
+        T_upper[:3, :3] = R_upper[:3, :3] @ A[:3, :3]
         
-        # Elbow position = upper arm center position + offset to end
-        elbow_world_pos = np.array([
-            self.upper_arm_length/2 + elbow_offset_world[0],  # Upper arm center + rotated offset
-            elbow_offset_world[1],
-            elbow_offset_world[2]
-        ])
-        self.elbow.translate(elbow_world_pos[0], elbow_world_pos[1], elbow_world_pos[2])
+        # Step 2: Translate to position cylinder center at upper_arm_length/2 along +X
+        # This translation is FIXED in world coordinates, not rotated coordinates
+        T_upper[:3, 3] = np.array([self.upper_arm_length * 0.5, 0.0, 0.0])
         
-        # === FOREARM ===
-        # Apply forearm quaternion directly
-        forearm_matrix = self.quaternion_to_rotation_matrix(forearm_quat)
-        combined_forearm = np.dot(forearm_matrix, base_rotation)
+        self.upper_arm.setTransform(T_upper)
         
-        self.forearm.setTransform(combined_forearm)
-        
-        # Position forearm: center should be positioned so forearm starts at elbow
-        # Calculate offset from elbow to forearm center along forearm's X-axis
-        forearm_center_offset = np.array([self.forearm_length/2, 0, 0, 1])  # From start to center
-        forearm_offset_world = np.dot(combined_forearm, forearm_center_offset)
-        
-        # Forearm center = elbow position + rotated offset
-        forearm_center_x = elbow_world_pos[0] + forearm_offset_world[0]
-        forearm_center_y = elbow_world_pos[1] + forearm_offset_world[1]
-        forearm_center_z = elbow_world_pos[2] + forearm_offset_world[2]
-        
-        self.forearm.translate(forearm_center_x, forearm_center_y, forearm_center_z)
+        # COMMENTED OUT FOR DEBUGGING - ELBOW AND FOREARM
+        # # Move elbow sphere to elbow position
+        # self.elbow.translate(elbow_world[0], elbow_world[1], elbow_world[2])
+        # 
+        # T_fore = np.eye(4, dtype=float)
+        # T_fore[:3, :3] = R_fore[:3, :3] @ A[:3, :3]
+        # T_fore[:3, 3] = elbow_world + dir_fore * (self.forearm_length * 0.5)
+        # self.forearm.setTransform(T_fore)
     
     def quaternion_conjugate(self, q):
         """Return quaternion conjugate [w, -x, -y, -z]"""
@@ -571,10 +561,10 @@ class MotionTrackingGUI(QMainWindow):
             # Update info panel
             self.update_info_display()
             
-            # Update 3D model if available
-            if 'raw_quaternions' in joint_measurements:
-                upper_arm_quat = joint_measurements['raw_quaternions']['upper_arm']
-                forearm_quat = joint_measurements['raw_quaternions']['forearm']
+            # Update 3D model if available - use calibrated quaternions for proper zero reference
+            if 'calibrated_quaternions' in joint_measurements:
+                upper_arm_quat = joint_measurements['calibrated_quaternions']['upper_arm']
+                forearm_quat = joint_measurements['calibrated_quaternions']['forearm']
                 self.arm_3d.update_arm_pose(upper_arm_quat, forearm_quat)
     
     def update_info_display(self):

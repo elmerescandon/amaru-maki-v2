@@ -342,11 +342,18 @@ class JointAngleCalculator:
         shoulder_elevation = pitch_deg   # Y-axis: Elevation(+) / Depression(-)
         shoulder_abduction = yaw_deg     # Z-axis: Abduction(+) / Adduction(-)
         
+        # Use supplement angle for abduction when it exceeds anatomical limits
+        # If abduction > 90°, use supplement angle (180° - angle)
+        if abs(shoulder_abduction) > 90.0:
+            shoulder_abduction = 180.0 - abs(shoulder_abduction)
+            if shoulder_abduction < 0:  # Preserve sign for direction
+                shoulder_abduction = -shoulder_abduction
+        
         if verbose:
             print(f"Final Upper Arm Angles:")
             print(f"  Shoulder Rotation:   {shoulder_rotation:7.2f}°")
             print(f"  Shoulder Elevation:  {shoulder_elevation:7.2f}°")
-            print(f"  Shoulder Abduction:  {shoulder_abduction:7.2f}°")
+            print(f"  Shoulder Abduction:  {shoulder_abduction:7.2f}° (supplement applied if >90°)")
             print(f"--- END UPPER ARM DEBUG ---\n")
         
         return {
