@@ -63,18 +63,18 @@ class Arm3DModel(QObject):
         self.upper_arm = gl.GLMeshItem(meshdata=upper_arm_mesh, color=(1.0, 0.5, 0.5, 1.0))  # Red
         self.view.addItem(self.upper_arm)
         
-        # Create elbow joint (sphere at end of upper arm) - COMMENTED OUT FOR DEBUGGING
-        # elbow_sphere = gl.MeshData.sphere(rows=12, cols=24, radius=self.joint_radius)
-        # self.elbow = gl.GLMeshItem(meshdata=elbow_sphere, color=(0.4, 0.4, 1.0, 1.0))  # Blue
-        # self.view.addItem(self.elbow)
+        # Create elbow joint (sphere at end of upper arm)
+        elbow_sphere = gl.MeshData.sphere(rows=12, cols=24, radius=self.joint_radius)
+        self.elbow = gl.GLMeshItem(meshdata=elbow_sphere, color=(0.4, 0.4, 1.0, 1.0))  # Blue
+        self.view.addItem(self.elbow)
         
-        # Create forearm (cylinder extending forward from elbow along X-axis) - COMMENTED OUT FOR DEBUGGING
-        # # Slight taper from elbow to wrist
-        # forearm_mesh = gl.MeshData.cylinder(rows=20, cols=24, 
-        #                                    radius=[self.bone_radius * 0.9, self.bone_radius * 0.7], 
-        #                                    length=self.forearm_length)
-        # self.forearm = gl.GLMeshItem(meshdata=forearm_mesh, color=(0.4, 1.0, 0.4, 1.0))  # Green
-        # self.view.addItem(self.forearm)
+        # Create forearm (cylinder extending forward from elbow along X-axis)
+        # Slight taper from elbow to wrist
+        forearm_mesh = gl.MeshData.cylinder(rows=20, cols=24, 
+                                           radius=[self.bone_radius * 0.9, self.bone_radius * 0.7], 
+                                           length=self.forearm_length)
+        self.forearm = gl.GLMeshItem(meshdata=forearm_mesh, color=(0.4, 1.0, 0.4, 1.0))  # Green
+        self.view.addItem(self.forearm)
         
         # Create coordinate axes for reference
         self.add_coordinate_axes()
@@ -127,10 +127,10 @@ class Arm3DModel(QObject):
     
     def update_arm_pose(self, upper_arm_quat, forearm_quat):
         """Update arm pose from IMU quaternions (X forward, Z up, Y right-hand)."""
-        # Reset transforms - ONLY UPPER ARM FOR DEBUGGING
+        # Reset transforms for all arm components
         self.upper_arm.resetTransform()
-        # self.forearm.resetTransform()
-        # self.elbow.resetTransform()
+        self.forearm.resetTransform()
+        self.elbow.resetTransform()
         
         # Ensure quaternion consistency and fix coordinate system
         # Normalize and ensure positive w component to avoid sign ambiguity
@@ -165,14 +165,32 @@ class Arm3DModel(QObject):
         
         self.upper_arm.setTransform(T_upper)
         
-        # COMMENTED OUT FOR DEBUGGING - ELBOW AND FOREARM
-        # # Move elbow sphere to elbow position
-        # self.elbow.translate(elbow_world[0], elbow_world[1], elbow_world[2])
-        # 
-        # T_fore = np.eye(4, dtype=float)
-        # T_fore[:3, :3] = R_fore[:3, :3] @ A[:3, :3]
-        # T_fore[:3, 3] = elbow_world + dir_fore * (self.forearm_length * 0.5)
-        # self.forearm.setTransform(T_fore)
+        # Calculate elbow position (end of upper arm)
+        elbow_world = rotated_direction * self.upper_arm_length
+        
+        # Move elbow sphere to elbow position
+        self.elbow.translate(elbow_world[0], elbow_world[1], elbow_world[2])
+        
+        # Process forearm quaternion with same corrections
+        forearm_quat_norm = self._normalize_quaternion(forearm_quat)
+        if forearm_quat_norm[0] < 0:
+            forearm_quat_norm = -forearm_quat_norm
+            
+        corrected_forearm_quat = np.array([
+            forearm_quat_norm[0],   # w stays the same
+            forearm_quat_norm[1],   # x stays the same  
+            -forearm_quat_norm[2],  # y - negate for elevation direction
+            forearm_quat_norm[3]    # z stays the same
+        ])
+        
+        # Build forearm transform
+        R_fore = self.quaternion_to_rotation_matrix(corrected_forearm_quat)
+        dir_fore = R_fore[:3, :3] @ np.array([1.0, 0.0, 0.0])
+        
+        T_fore = np.eye(4, dtype=float)
+        T_fore[:3, :3] = R_fore[:3, :3] @ A[:3, :3]
+        T_fore[:3, 3] = elbow_world + dir_fore * (self.forearm_length*1.2)
+        self.forearm.setTransform(T_fore)
     
     def quaternion_conjugate(self, q):
         """Return quaternion conjugate [w, -x, -y, -z]"""
