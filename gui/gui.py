@@ -13,6 +13,7 @@ from PyQt6.QtCore import QTimer, pyqtSignal, QObject, QThread
 from PyQt6.QtGui import QFont, QPalette, QColor
 
 import pyqtgraph as pg
+import pyqtgraph.opengl as gl
 
 from utils import ArmMotionTracker
 
@@ -20,6 +21,183 @@ from utils import ArmMotionTracker
 CHAR_UUID = "abcd1234-5678-90ab-cdef-1234567890ab"
 CALIBRATION_TIME = 5
 DATA_BUFFER_SIZE = 500
+
+class Arm3DModel(QObject):
+    """3D Arm visualization using PyQtGraph OpenGL"""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # Create 3D view widget  
+        self.view = gl.GLViewWidget()
+        self.view.setCameraPosition(distance=35, elevation=15, azimuth=30)  # Better framing for arm proportions
+        self.view.setBackgroundColor('k')  # Black background
+        
+        # Arm segment dimensions (realistic proportions)
+        self.upper_arm_length = 12.0  # Slightly shorter for better proportions
+        self.forearm_length = 10.0    # Proportional to upper arm
+        self.bone_radius = 1.2        # Thicker for better visibility
+        self.joint_radius = 1.8       # Prominent joint visualization
+        
+        # Initialize arm geometry
+        self.setup_arm_geometry()
+        
+        # Current rotations (will be updated from IMU data)
+        self.upper_arm_rotation = np.array([1, 0, 0, 0])  # Identity quaternion
+        self.forearm_rotation = np.array([1, 0, 0, 0])    # Identity quaternion
+        
+    def setup_arm_geometry(self):
+        """Create the 3D arm model geometry"""
+        # Create shoulder reference point (proportional sphere)
+        shoulder_radius = self.bone_radius * 0.8  # Smaller than bone radius
+        shoulder_sphere = gl.MeshData.sphere(rows=10, cols=20, radius=shoulder_radius)
+        self.shoulder = gl.GLMeshItem(meshdata=shoulder_sphere, color=(0.9, 0.9, 0.9, 1.0))
+        self.shoulder.translate(0, 0, 0)  # Origin point
+        self.view.addItem(self.shoulder)
+        
+        # Create upper arm (cylinder extending forward along X-axis)
+        # Slight taper from shoulder to elbow for realism
+        upper_arm_mesh = gl.MeshData.cylinder(rows=24, cols=24, 
+                                              radius=[self.bone_radius * 1.1, self.bone_radius * 0.9], 
+                                              length=self.upper_arm_length)
+        self.upper_arm = gl.GLMeshItem(meshdata=upper_arm_mesh, color=(1.0, 0.5, 0.5, 1.0))  # Red
+        
+        # Rotate cylinder to align with X-axis (forward direction) and position
+        self.upper_arm.rotate(90, 0, 1, 0)  # Rotate 90° around Y-axis to point along +X
+        self.upper_arm.translate(self.upper_arm_length/2, 0, 0)  # Position center at half-length along X
+        self.view.addItem(self.upper_arm)
+        
+        # Create elbow joint (sphere at end of upper arm)
+        elbow_sphere = gl.MeshData.sphere(rows=12, cols=24, radius=self.joint_radius)
+        self.elbow = gl.GLMeshItem(meshdata=elbow_sphere, color=(0.4, 0.4, 1.0, 1.0))  # Blue
+        self.elbow.translate(self.upper_arm_length, 0, 0)  # At end of upper arm along X-axis
+        self.view.addItem(self.elbow)
+        
+        # Create forearm (cylinder extending forward from elbow along X-axis)
+        # Slight taper from elbow to wrist
+        forearm_mesh = gl.MeshData.cylinder(rows=20, cols=24, 
+                                           radius=[self.bone_radius * 0.9, self.bone_radius * 0.7], 
+                                           length=self.forearm_length)
+        self.forearm = gl.GLMeshItem(meshdata=forearm_mesh, color=(0.4, 1.0, 0.4, 1.0))  # Green
+        
+        # Rotate and position forearm to continue along X-axis
+        self.forearm.rotate(90, 0, 1, 0)  # Rotate 90° around Y-axis to point along +X
+        self.forearm.translate(self.upper_arm_length + self.forearm_length/2, 0, 0)
+        self.view.addItem(self.forearm)
+        
+        # Create coordinate axes for reference
+        self.add_coordinate_axes()
+        
+    def add_coordinate_axes(self):
+        """Add coordinate axes for reference"""
+        # Calculate axis length proportional to arm segments
+        axis_length = (self.upper_arm_length + self.forearm_length) * 0.35  # ~35% of total arm length
+        
+        # X-axis (red) - Forward/Along arm towards fingers
+        x_axis = np.array([[0, 0, 0], [axis_length, 0, 0]])
+        x_line = gl.GLLinePlotItem(pos=x_axis, color=(1, 0, 0, 1), width=5)
+        self.view.addItem(x_line)
+        
+        # Y-axis (green) - Right-hand rule (left when looking forward)  
+        y_axis = np.array([[0, 0, 0], [0, axis_length * 0.8, 0]])
+        y_line = gl.GLLinePlotItem(pos=y_axis, color=(0, 1, 0, 1), width=5)
+        self.view.addItem(y_line)
+        
+        # Z-axis (blue) - Up to ceiling
+        z_axis = np.array([[0, 0, 0], [0, 0, axis_length * 0.8]])
+        z_line = gl.GLLinePlotItem(pos=z_axis, color=(0, 0, 1, 1), width=5)
+        self.view.addItem(z_line)
+    
+    def quaternion_to_rotation_matrix(self, q):
+        """Convert quaternion [w, x, y, z] to 4x4 rotation matrix"""
+        w, x, y, z = q
+        
+        # Rotation matrix from quaternion
+        rotation_matrix = np.array([
+            [1 - 2*(y*y + z*z), 2*(x*y - w*z), 2*(x*z + w*y), 0],
+            [2*(x*y + w*z), 1 - 2*(x*x + z*z), 2*(y*z - w*x), 0],
+            [2*(x*z - w*y), 2*(y*z + w*x), 1 - 2*(x*x + y*y), 0],
+            [0, 0, 0, 1]
+        ])
+        
+        return rotation_matrix
+    
+    def update_arm_pose(self, upper_arm_quat, forearm_quat):
+        """Update arm pose from IMU quaternions"""
+        # Reset transformations
+        self.upper_arm.resetTransform()
+        self.forearm.resetTransform()
+        self.elbow.resetTransform()
+        
+        # Base rotation matrix to align cylinder (Z-axis) with our X-axis (forward)
+        base_rotation = np.array([
+            [0, 0, 1, 0],   # Map Z to X (forward along arm)
+            [0, 1, 0, 0],   # Y stays Y (lateral)  
+            [-1, 0, 0, 0],  # Map X to -Z (was up, now back)
+            [0, 0, 0, 1]
+        ])
+        
+        # === UPPER ARM ===
+        # Apply upper arm rotation (shoulder movement)
+        upper_arm_matrix = self.quaternion_to_rotation_matrix(upper_arm_quat)
+        combined_upper_arm = np.dot(upper_arm_matrix, base_rotation)
+        
+        self.upper_arm.setTransform(combined_upper_arm)
+        self.upper_arm.translate(self.upper_arm_length/2, 0, 0)
+        
+        # Calculate elbow position: at the end of the upper arm
+        # The upper arm extends from center-half_length to center+half_length
+        # So the elbow is at center + half_length in the upper arm's local coordinate system
+        elbow_local_offset = np.array([self.upper_arm_length/2, 0, 0, 1])  # From center to end
+        elbow_offset_world = np.dot(combined_upper_arm, elbow_local_offset)
+        
+        # Elbow position = upper arm center position + offset to end
+        elbow_world_pos = np.array([
+            self.upper_arm_length/2 + elbow_offset_world[0],  # Upper arm center + rotated offset
+            elbow_offset_world[1],
+            elbow_offset_world[2]
+        ])
+        self.elbow.translate(elbow_world_pos[0], elbow_world_pos[1], elbow_world_pos[2])
+        
+        # === FOREARM ===
+        # Apply forearm quaternion directly
+        forearm_matrix = self.quaternion_to_rotation_matrix(forearm_quat)
+        combined_forearm = np.dot(forearm_matrix, base_rotation)
+        
+        self.forearm.setTransform(combined_forearm)
+        
+        # Position forearm: center should be positioned so forearm starts at elbow
+        # Calculate offset from elbow to forearm center along forearm's X-axis
+        forearm_center_offset = np.array([self.forearm_length/2, 0, 0, 1])  # From start to center
+        forearm_offset_world = np.dot(combined_forearm, forearm_center_offset)
+        
+        # Forearm center = elbow position + rotated offset
+        forearm_center_x = elbow_world_pos[0] + forearm_offset_world[0]
+        forearm_center_y = elbow_world_pos[1] + forearm_offset_world[1]
+        forearm_center_z = elbow_world_pos[2] + forearm_offset_world[2]
+        
+        self.forearm.translate(forearm_center_x, forearm_center_y, forearm_center_z)
+    
+    def quaternion_conjugate(self, q):
+        """Return quaternion conjugate [w, -x, -y, -z]"""
+        return np.array([q[0], -q[1], -q[2], -q[3]])
+    
+    def quat_multiply(self, q1, q2):
+        """Multiply two quaternions q1 * q2 (Hamilton product)"""
+        w1, x1, y1, z1 = q1
+        w2, x2, y2, z2 = q2
+
+        w = w1*w2 - x1*x2 - y1*y2 - z1*z2
+        x = w1*x2 + x1*w2 + y1*z2 - z1*y2
+        y = w1*y2 - x1*z2 + y1*w2 + z1*x2
+        z = w1*z2 + x1*y2 - y1*x2 + z1*w2
+
+        q = np.array([w, x, y, z])
+        return q / np.linalg.norm(q)  # normalize to unit length
+    
+    def get_widget(self):
+        """Return the 3D view widget for embedding in GUI"""
+        return self.view
 
 class BLEManager(QObject):
     """Simple BLE manager for handling connections"""
@@ -108,6 +286,12 @@ class MotionTrackingGUI(QMainWindow):
         
         self.start_time = time.time()
         
+        # View mode (True = graphs, False = 3D)
+        self.show_graphs = True
+        
+        # Setup 3D model first (needed by setup_ui)
+        self.arm_3d = Arm3DModel()
+        
         # Setup UI
         self.setup_ui()
         self.setup_plots()
@@ -141,9 +325,13 @@ class MotionTrackingGUI(QMainWindow):
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
         
-        # Left side: Graphs
-        graphs_widget = QWidget()
-        graphs_layout = QGridLayout(graphs_widget)
+        # Left side: Content area (graphs or 3D view)
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        
+        # Create graphs widget
+        self.graphs_widget = QWidget()
+        graphs_layout = QGridLayout(self.graphs_widget)
         
         # Create graph frames
         self.create_graph_frame("Upper Arm X-Axis (Shoulder Rotation)", "upper_arm_x", graphs_layout, 0, 0)
@@ -151,11 +339,30 @@ class MotionTrackingGUI(QMainWindow):
         self.create_graph_frame("Upper Arm Z-Axis (Shoulder Abduction)", "upper_arm_z", graphs_layout, 1, 0)
         self.create_graph_frame("Elbow Flexion/Extension", "elbow_flexion", graphs_layout, 1, 1)
         
+        # Create 3D widget container
+        self.view_3d_widget = QWidget()
+        view_3d_layout = QVBoxLayout(self.view_3d_widget)
+        view_3d_layout.setContentsMargins(0, 0, 0, 0)  # Remove margins
+        view_3d_layout.setSpacing(0)  # Remove spacing
+        
+        # Add title for 3D view with fixed height
+        view_3d_title = QLabel("3D Arm Visualization")
+        view_3d_title.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        view_3d_title.setFixedHeight(32)  # Fixed 32 pixels height
+        view_3d_title.setStyleSheet("padding: 8px; background-color: #3c3c3c;")
+        view_3d_layout.addWidget(view_3d_title)
+        
+        # Add 3D view (takes remaining space)
+        view_3d_layout.addWidget(self.arm_3d.get_widget(), 1)  # Stretch factor = 1
+        
+        # Initially show graphs
+        self.content_layout.addWidget(self.graphs_widget)
+        
         # Right side: Info panel
         info_widget = self.create_info_panel()
         
         # Add to main layout
-        main_layout.addWidget(graphs_widget, 3)  # 75% width
+        main_layout.addWidget(self.content_widget, 3)  # 75% width
         main_layout.addWidget(info_widget, 1)    # 25% width
     
     def create_graph_frame(self, title, key, layout, row, col):
@@ -229,6 +436,27 @@ class MotionTrackingGUI(QMainWindow):
         # Add spacer
         info_layout.addStretch()
         
+        # View toggle button
+        self.view_toggle_button = QPushButton("Switch to 3D View")
+        self.view_toggle_button.clicked.connect(self.toggle_view)
+        self.view_toggle_button.setStyleSheet("""
+            QPushButton { 
+                background-color: #5a5a5a; 
+                border: 2px solid #777; 
+                padding: 8px; 
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #6a6a6a; }
+        """)
+        info_layout.addWidget(self.view_toggle_button)
+        
+        # Separator
+        separator2 = QFrame()
+        separator2.setFrameShape(QFrame.Shape.HLine)
+        separator2.setFrameShadow(QFrame.Shadow.Sunken)
+        info_layout.addWidget(separator2)
+        
         # Control buttons
         self.start_button = QPushButton("Start Connection")
         self.start_button.clicked.connect(self.start_connection)
@@ -269,6 +497,28 @@ class MotionTrackingGUI(QMainWindow):
             asyncio.create_task(self.ble_manager.disconnect())
         else:
             self.connection_label.setText("Connection: Disconnected")
+    
+    def toggle_view(self):
+        """Toggle between graphs and 3D view"""
+        if self.show_graphs:
+            # Switch to 3D view
+            self.content_layout.removeWidget(self.graphs_widget)
+            self.graphs_widget.hide()
+            self.content_layout.addWidget(self.view_3d_widget)
+            self.view_3d_widget.show()
+            
+            self.show_graphs = False
+            self.view_toggle_button.setText("Switch to Graphs View")
+            
+        else:
+            # Switch to graphs view
+            self.content_layout.removeWidget(self.view_3d_widget)
+            self.view_3d_widget.hide()
+            self.content_layout.addWidget(self.graphs_widget)
+            self.graphs_widget.show()
+            
+            self.show_graphs = True
+            self.view_toggle_button.setText("Switch to 3D View")
     
     def update_connection_status(self, status):
         """Update connection status display"""
@@ -320,6 +570,12 @@ class MotionTrackingGUI(QMainWindow):
             
             # Update info panel
             self.update_info_display()
+            
+            # Update 3D model if available
+            if 'raw_quaternions' in joint_measurements:
+                upper_arm_quat = joint_measurements['raw_quaternions']['upper_arm']
+                forearm_quat = joint_measurements['raw_quaternions']['forearm']
+                self.arm_3d.update_arm_pose(upper_arm_quat, forearm_quat)
     
     def update_info_display(self):
         """Update the information display with current values"""
